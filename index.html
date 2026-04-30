@@ -1,0 +1,362 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Master Admin Dashboard</title>
+    <style>
+        :root { --primary: #6366f1; --bg: #f1f5f9; --text: #0f172a; --success: #22c55e; }
+        body { font-family: 'Inter', sans-serif; background: var(--bg); color: var(--text); margin: 0; }
+        
+        /* Auth Screen */
+        #authScreen { position: fixed; inset: 0; background: white; z-index: 1000; display: flex; align-items: center; justify-content: center; }
+        .auth-card { padding: 2rem; box-shadow: 0 10px 25px -5px rgba(0,0,0,0.1); border-radius: 1rem; width: 350px; text-align: center; }
+        
+        /* Layout */
+        .navbar { background: white; padding: 1rem 2rem; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #e2e8f0; }
+        .main-container { max-width: 1100px; margin: 2rem auto; padding: 0 1rem; display: none; }
+        .tabs { display: flex; gap: 10px; margin-bottom: 20px; }
+        .tab-btn { padding: 10px 20px; border: none; background: #e2e8f0; cursor: pointer; border-radius: 5px; font-weight: bold; }
+        .tab-btn.active { background: var(--primary); color: white; }
+
+        .card { background: white; padding: 20px; border-radius: 10px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); margin-bottom: 20px; }
+        textarea, input, select { width: 100%; padding: 12px; margin-top: 8px; border: 1px solid #cbd5e1; border-radius: 6px; box-sizing: border-box; }
+        button { background: var(--primary); color: white; border: none; padding: 12px 20px; border-radius: 6px; cursor: pointer; margin-top: 10px; font-weight: bold; }
+        
+        /* Results Table */
+        table { width: 100%; border-collapse: collapse; margin-top: 1rem; }
+        th, td { text-align: left; padding: 12px; border-bottom: 1px solid #e2e8f0; }
+        th { background: #f8fafc; }
+        
+        .hidden { display: none; }
+    </style>
+</head>
+<body>
+
+    <div id="authScreen">
+        <div class="auth-card">
+            <h2 id="authTitle">Admin Login</h2>
+            <input type="password" id="adminPassInput" placeholder="Enter Password">
+            <button onclick="handleAuth()" id="authBtn">Login</button>
+        </div>
+    </div>
+
+    <div class="main-container" id="dashboard">
+        <nav class="navbar">
+            <h1>Admin Panel</h1>
+            <button onclick="logout()" style="background: #ef4444;">Logout</button>
+        </nav>
+
+        <div class="tabs">
+            <button class="tab-btn active" onclick="showSection('create')">Create Quiz</button>
+            <button class="tab-btn" onclick="showSection('results')">View Results</button>
+        </div>
+
+        <section id="createSection">
+            <div class="card">
+                <h3>1. Select/Create Question Bank</h3>
+                <select id="bankSelect" onchange="toggleNewBankInput()">
+                    <option value="new">+ Create New Bank</option>
+                </select>
+                <input type="text" id="newBankName" placeholder="Enter Bank Name (e.g. Maths 101)" class="hidden">
+            </div>
+
+            <div class="card">
+                <h3>2. Paste AI Content</h3>
+                <textarea id="aiText" placeholder="Paste MCQs here..."></textarea>
+                <button onclick="parseContent()">Parse & Preview</button>
+            </div>
+
+            <div id="previewArea" class="hidden card">
+                <h3>3. Preview & Save</h3>
+                <div id="previewList"></div>
+                <button onclick="saveToBank()" style="background: var(--success)">Confirm & Save to Bank</button>
+            </div>
+        </section>
+
+        <section id="resultsSection" class="hidden">
+            <div class="card">
+                <h3>Student Performance</h3>
+                <table id="resultsTable">
+                    <thead>
+                        <tr>
+                            <th>Student Name</th>
+                            <th>Quiz Bank</th>
+                            <th>Score</th>
+                            <th>Date</th>
+                        </tr>
+                    </thead>
+                    <tbody id="resultsBody"></tbody>
+                </table>
+            </div>
+        </section>
+    </div>
+
+<script>
+    let currentParsedData = [];
+    
+    // --- AUTHENTICATION LOGIC ---
+    window.onload = () => {
+        if (!localStorage.getItem('adminPassword')) {
+            document.getElementById('authTitle').innerText = "Set Admin Password";
+            document.getElementById('authBtn').innerText = "Set Password";
+        }
+        loadBanks();
+    };
+
+    function handleAuth() {
+        const input = document.getElementById('adminPassInput').value;
+        const savedPass = localStorage.getItem('adminPassword');
+
+        if (!savedPass) {
+            localStorage.setItem('adminPassword', input);
+            alert("Password Set! Please log in.");
+            location.reload();
+        } else if (input === savedPass) {
+            document.getElementById('authScreen').classList.add('hidden');
+            document.getElementById('dashboard').style.display = 'block';
+            loadResults();
+        } else {
+            alert("Incorrect Password");
+        }
+    }
+
+    function logout() { location.reload(); }
+
+    // --- TAB NAVIGATION ---
+    function showSection(section) {
+        document.getElementById('createSection').classList.toggle('hidden', section !== 'create');
+        document.getElementById('resultsSection').classList.toggle('hidden', section !== 'results');
+        document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+        event.target.classList.add('active');
+        if(section === 'results') loadResults();
+    }
+
+    // --- QUIZ LOGIC ---
+    function toggleNewBankInput() {
+        const isNew = document.getElementById('bankSelect').value === 'new';
+        document.getElementById('newBankName').classList.toggle('hidden', !isNew);
+    }
+
+    function loadBanks() {
+        const banks = JSON.parse(localStorage.getItem('quizBanks') || '{}');
+        const select = document.getElementById('bankSelect');
+        select.innerHTML = '<option value="new">+ Create New Bank</option>';
+        for (let name in banks) {
+            const opt = document.createElement('option');
+            opt.value = name;
+            opt.innerText = name;
+            select.appendChild(opt);
+        }
+    }
+
+    function parseContent() {
+        const raw = document.getElementById('aiText').value;
+        const blocks = raw.split(/\n(?=\d+[\.\)])/);
+        currentParsedData = [];
+
+        blocks.forEach(block => {
+            const lines = block.split('\n').map(l => l.trim()).filter(l => l !== "");
+            if (lines.length < 3) return;
+
+            const question = lines[0].replace(/^\d+[\.\)]\s*/, "");
+            const options = lines.filter(l => l.match(/^[A-D][\.\)]/i));
+            const ansLine = lines.find(l => l.toLowerCase().includes("correct"));
+            const correct = ansLine ? ansLine.split(/[:\-]/).pop().trim().charAt(0).toUpperCase() : "A";
+
+            currentParsedData.push({ question, options, correct });
+        });
+
+        const list = document.getElementById('previewList');
+        list.innerHTML = currentParsedData.map(q => `<p><b>${q.question}</b> (Ans: ${q.correct})</p>`).join('');
+        document.getElementById('previewArea').classList.remove('hidden');
+    }
+
+    function saveToBank() {
+        let bankName = document.getElementById('bankSelect').value;
+        if (bankName === 'new') {
+            bankName = document.getElementById('newBankName').value;
+        }
+
+        if (!bankName) return alert("Please name your bank!");
+
+        const allBanks = JSON.parse(localStorage.getItem('quizBanks') || '{}');
+        allBanks[bankName] = currentParsedData;
+        
+        localStorage.setItem('quizBanks', JSON.stringify(allBanks));
+        alert(`Saved to ${bankName}!`);
+        loadBanks();
+        document.getElementById('previewArea').classList.add('hidden');
+        document.getElementById('aiText').value = "";
+    }
+
+    // --- RESULTS LOGIC ---
+    function loadResults() {
+        const results = JSON.parse(localStorage.getItem('studentResults') || '[]');
+        const body = document.getElementById('resultsBody');
+        body.innerHTML = results.map(r => `
+            <tr>
+                <td>${r.studentName}</td>
+                <td>${r.quizName}</td>
+                <td>${r.score}%</td>
+                <td>${r.date}</td>
+            </tr>
+        `).join('');
+    }
+</script>
+</body>
+</html>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Quiz Admin - Firebase</title>
+    <style>
+        :root { --primary: #4f46e5; --bg: #f8fafc; --text: #1e293b; }
+        body { font-family: 'Inter', sans-serif; background: var(--bg); margin: 0; padding: 20px; }
+        .container { max-width: 900px; margin: 0 auto; }
+        .card { background: white; padding: 25px; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); margin-bottom: 20px; }
+        textarea, input, select { width: 100%; padding: 12px; margin-top: 8px; border: 1px solid #e2e8f0; border-radius: 6px; box-sizing: border-box; }
+        button { background: var(--primary); color: white; border: none; padding: 12px 24px; border-radius: 6px; cursor: pointer; font-weight: bold; margin-top: 10px; }
+        .hidden { display: none; }
+        table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+        th, td { text-align: left; padding: 12px; border-bottom: 1px solid #e2e8f0; }
+        .tabs { display: flex; gap: 10px; margin-bottom: 20px; }
+        .tab-btn { padding: 10px 20px; border: none; cursor: pointer; border-radius: 5px; background: #cbd5e1; }
+        .tab-btn.active { background: var(--primary); color: white; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <div id="authBox" class="card">
+        <h2>Admin Login</h2>
+        <input type="email" id="email" placeholder="Admin Email">
+        <input type="password" id="password" placeholder="Password">
+        <button id="loginBtn">Login</button>
+    </div>
+
+    <div id="dashboard" class="hidden">
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+            <h1>Admin Panel</h1>
+            <button id="logoutBtn" style="background: #ef4444;">Logout</button>
+        </div>
+
+        <div class="tabs">
+            <button class="tab-btn active" id="tabCreate">Create Quiz</button>
+            <button class="tab-btn" id="tabResults">View Results</button>
+        </div>
+
+        <div id="createSection">
+            <div class="card">
+                <h3>Quiz Bank Name</h3>
+                <input type="text" id="bankName" placeholder="e.g. Biology 101">
+                <h3>Paste AI Text</h3>
+                <textarea id="aiText" style="height: 150px;" placeholder="1. Question..."></textarea>
+                <button id="saveQuizBtn">Save Quiz to Cloud</button>
+            </div>
+        </div>
+
+        <div id="resultsSection" class="hidden">
+            <div class="card">
+                <h3>Student Scores</h3>
+                <table>
+                    <thead><tr><th>Student</th><th>Quiz</th><th>Score</th><th>Date</th></tr></thead>
+                    <tbody id="resultsBody"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.0/firebase-app.js";
+    import { getAuth, signInWithEmailAndPassword, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.7.0/firebase-auth.js";
+    import { getFirestore, collection, addDoc, getDocs, query, orderBy } from "https://www.gstatic.com/firebasejs/10.7.0/firebase-firestore.js";
+
+    const firebaseConfig = {
+        apiKey: "AIzaSyACKQAD1sIUGdOjncQkfjMrmGh4x_U0v74",
+        authDomain: "quiz-76725.firebaseapp.com",
+        projectId: "quiz-76725",
+        storageBucket: "quiz-76725.firebasestorage.app",
+        messagingSenderId: "352657593612",
+        appId: "1:352657593612:web:80054cb0dcdc3a97c1a529"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const auth = getAuth(app);
+    const db = getFirestore(app);
+
+    // --- Authentication ---
+    document.getElementById('loginBtn').onclick = async () => {
+        const email = document.getElementById('email').value;
+        const pass = document.getElementById('password').value;
+        try { await signInWithEmailAndPassword(auth, email, pass); } 
+        catch (e) { alert("Login Failed: " + e.message); }
+    };
+
+    onAuthStateChanged(auth, (user) => {
+        if (user) {
+            document.getElementById('authBox').classList.add('hidden');
+            document.getElementById('dashboard').classList.remove('hidden');
+            loadResults();
+        } else {
+            document.getElementById('authBox').classList.remove('hidden');
+            document.getElementById('dashboard').classList.add('hidden');
+        }
+    });
+
+    document.getElementById('logoutBtn').onclick = () => signOut(auth);
+
+    // --- Quiz Logic ---
+    document.getElementById('saveQuizBtn').onclick = async () => {
+        const name = document.getElementById('bankName').value;
+        const text = document.getElementById('aiText').value;
+        if(!name || !text) return alert("Fill everything!");
+
+        // Simple Parser
+        const questions = [];
+        const blocks = text.split(/\n(?=\d+[\.\)])/);
+        blocks.forEach(block => {
+            const lines = block.split('\n').map(l => l.trim()).filter(l => l !== "");
+            if (lines.length < 3) return;
+            const question = lines[0].replace(/^\d+[\.\)]\s*/, "");
+            const options = lines.filter(l => l.match(/^[A-D][\.\)]/i));
+            const ansLine = lines.find(l => l.toLowerCase().includes("correct"));
+            const correct = ansLine ? ansLine.split(/[:\-]/).pop().trim().charAt(0).toUpperCase() : "A";
+            questions.push({ question, options, correct });
+        });
+
+        try {
+            await addDoc(collection(db, "quizzes"), { bankName: name, questions: questions, createdAt: new Date() });
+            alert("Quiz saved to Cloud!");
+            document.getElementById('aiText').value = "";
+        } catch (e) { alert("Error saving: " + e.message); }
+    };
+
+    // --- Results Logic ---
+    async function loadResults() {
+        const q = query(collection(db, "results"), orderBy("date", "desc"));
+        const snapshot = await getDocs(q);
+        const body = document.getElementById('resultsBody');
+        body.innerHTML = "";
+        snapshot.forEach(doc => {
+            const r = doc.data();
+            body.innerHTML += `<tr><td>${r.studentName}</td><td>${r.quizName}</td><td>${r.score}%</td><td>${r.date}</td></tr>`;
+        });
+    }
+
+    // Tabs
+    document.getElementById('tabCreate').onclick = () => {
+        document.getElementById('createSection').classList.remove('hidden');
+        document.getElementById('resultsSection').classList.add('hidden');
+    };
+    document.getElementById('tabResults').onclick = () => {
+        document.getElementById('createSection').classList.add('hidden');
+        document.getElementById('resultsSection').classList.remove('hidden');
+        loadResults();
+    };
+</script>
+</body>
+</html>

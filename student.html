@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Student Portal - Cloud Quiz</title>
+    <style>
+        :root { --primary: #4f46e5; --bg: #f1f5f9; --text: #1e293b; --success: #22c55e; --danger: #ef4444; }
+        body { font-family: 'Inter', sans-serif; background: var(--bg); margin: 0; padding: 20px; }
+        .container { max-width: 600px; margin: 0 auto; }
+        .card { background: white; padding: 30px; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); margin-bottom: 20px; }
+        input, select { width: 100%; padding: 12px; margin: 10px 0; border: 1px solid #cbd5e1; border-radius: 8px; }
+        button { width: 100%; background: var(--primary); color: white; border: none; padding: 14px; border-radius: 8px; cursor: pointer; font-weight: bold; }
+        .option-btn { background: #f8fafc; color: var(--text); border: 1px solid #e2e8f0; margin-bottom: 8px; text-align: left; }
+        .option-btn.correct { background: #dcfce7; border-color: var(--success); }
+        .option-btn.wrong { background: #fee2e2; border-color: var(--danger); }
+        .hidden { display: none; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <div id="setup" class="card">
+        <h1>Take a Quiz</h1>
+        <input type="text" id="sName" placeholder="Your Name">
+        <select id="sQuiz"><option>Loading quizzes...</option></select>
+        <button id="startBtn">Start Now</button>
+    </div>
+
+    <div id="quiz" class="hidden">
+        <div class="card">
+            <h2 id="qText">Question?</h2>
+            <div id="options"></div>
+        </div>
+    </div>
+
+    <div id="finish" class="hidden card" style="text-align: center;">
+        <h1>Finished!</h1>
+        <div id="score" style="font-size: 50px; color: var(--primary);">0%</div>
+        <button onclick="location.reload()">Back to Home</button>
+    </div>
+</div>
+
+<script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.0/firebase-app.js";
+    import { getFirestore, collection, getDocs, addDoc } from "https://www.gstatic.com/firebasejs/10.7.0/firebase-firestore.js";
+
+    const firebaseConfig = {
+        apiKey: "AIzaSyACKQAD1sIUGdOjncQkfjMrmGh4x_U0v74",
+        authDomain: "quiz-76725.firebaseapp.com",
+        projectId: "quiz-76725",
+        storageBucket: "quiz-76725.firebasestorage.app",
+        messagingSenderId: "352657593612",
+        appId: "1:352657593612:web:80054cb0dcdc3a97c1a529"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const db = getFirestore(app);
+
+    let quizzes = [];
+    let activeQuiz = null;
+    let currentIdx = 0;
+    let score = 0;
+
+    // Load Quizzes from Cloud
+    window.onload = async () => {
+        const snap = await getDocs(collection(db, "quizzes"));
+        const select = document.getElementById('sQuiz');
+        select.innerHTML = "";
+        snap.forEach(doc => {
+            quizzes.push({id: doc.id, ...doc.data()});
+            select.innerHTML += `<option value="${doc.id}">${doc.data().bankName}</option>`;
+        });
+    };
+
+    document.getElementById('startBtn').onclick = () => {
+        const name = document.getElementById('sName').value;
+        const qId = document.getElementById('sQuiz').value;
+        if(!name) return alert("Name please!");
+        activeQuiz = quizzes.find(q => q.id === qId);
+        document.getElementById('setup').classList.add('hidden');
+        document.getElementById('quiz').classList.remove('hidden');
+        renderQ();
+    };
+
+    function renderQ() {
+        const q = activeQuiz.questions[currentIdx];
+        document.getElementById('qText').innerText = q.question;
+        const optCont = document.getElementById('options');
+        optCont.innerHTML = "";
+        q.options.forEach(opt => {
+            const btn = document.createElement('button');
+            btn.className = 'button option-btn';
+            btn.innerText = opt;
+            btn.onclick = () => checkAns(opt, btn);
+            optCont.appendChild(btn);
+        });
+    }
+
+    async function checkAns(sel, btn) {
+        const q = activeQuiz.questions[currentIdx];
+        const correct = q.correct;
+        const picked = sel.trim().charAt(0).toUpperCase();
+
+        if(picked === correct) {
+            btn.classList.add('correct');
+            score++;
+        } else {
+            btn.classList.add('wrong');
+        }
+
+        setTimeout(async () => {
+            currentIdx++;
+            if(currentIdx < activeQuiz.questions.length) renderQ();
+            else {
+                const finalScore = Math.round((score/activeQuiz.questions.length)*100);
+                document.getElementById('quiz').classList.add('hidden');
+                document.getElementById('finish').classList.remove('hidden');
+                document.getElementById('score').innerText = finalScore + "%";
+                
+                // Save Result to Firebase
+                await addDoc(collection(db, "results"), {
+                    studentName: document.getElementById('sName').value,
+                    quizName: activeQuiz.bankName,
+                    score: finalScore,
+                    date: new Date().toLocaleString()
+                });
+            }
+        }, 1000);
+    }
+</script>
+</body>
+</html>
