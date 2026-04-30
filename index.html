@@ -3,69 +3,69 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AI Quiz Admin - Firebase</title>
+    <title>Student Portal - Cloud Quiz</title>
     <style>
-        :root { --primary: #4f46e5; --bg: #f8fafc; --text: #1e293b; }
+        :root { --primary: #4f46e5; --bg: #f1f5f9; --text: #1e293b; --success: #22c55e; --danger: #ef4444; }
         body { font-family: 'Inter', sans-serif; background: var(--bg); margin: 0; padding: 20px; }
-        .container { max-width: 900px; margin: 0 auto; }
-        .card { background: white; padding: 25px; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); margin-bottom: 20px; }
-        textarea, input, select { width: 100%; padding: 12px; margin-top: 8px; border: 1px solid #e2e8f0; border-radius: 6px; box-sizing: border-box; }
-        button { background: var(--primary); color: white; border: none; padding: 12px 24px; border-radius: 6px; cursor: pointer; font-weight: bold; margin-top: 10px; }
+        .container { max-width: 600px; margin: 0 auto; }
+        .card { background: white; padding: 30px; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); margin-bottom: 20px; }
+        input, select { width: 100%; padding: 12px; margin: 10px 0; border: 1px solid #cbd5e1; border-radius: 8px; }
+        button { width: 100%; background: var(--primary); color: white; border: none; padding: 14px; border-radius: 8px; cursor: pointer; font-weight: bold; }
+        .option-btn { background: #f8fafc; color: var(--text); border: 1px solid #e2e8f0; margin-bottom: 8px; text-align: left; }
+        .option-btn.correct { background: #dcfce7; border-color: var(--success); }
+        .option-btn.wrong { background: #fee2e2; border-color: var(--danger); }
         .hidden { display: none; }
-        table { width: 100%; border-collapse: collapse; margin-top: 20px; }
-        th, td { text-align: left; padding: 12px; border-bottom: 1px solid #e2e8f0; }
-        .tabs { display: flex; gap: 10px; margin-bottom: 20px; }
-        .tab-btn { padding: 10px 20px; border: none; cursor: pointer; border-radius: 5px; background: #cbd5e1; }
-        .tab-btn.active { background: var(--primary); color: white; }
+.admin-access {
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    opacity: 0.3; /* Makes it faint so students don't notice it immediately */
+    transition: opacity 0.3s;
+}
+
+.admin-access:hover {
+    opacity: 1; /* Becomes clear when you hover over it */
+}
+
+.admin-access a {
+    color: #64748b;
+    text-decoration: none;
+    background: white;
+    padding: 10px;
+    border-radius: 50%;
+    display: flex;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+}
+
     </style>
 </head>
 <body>
 
 <div class="container">
-    <div id="authBox" class="card">
-        <h2>Admin Login</h2>
-        <input type="email" id="email" placeholder="Admin Email">
-        <input type="password" id="password" placeholder="Password">
-        <button id="loginBtn">Login</button>
+    <div id="setup" class="card">
+        <h1>Take a Quiz</h1>
+        <input type="text" id="sName" placeholder="Your Name">
+        <select id="sQuiz"><option>Loading quizzes...</option></select>
+        <button id="startBtn">Start Now</button>
     </div>
 
-    <div id="dashboard" class="hidden">
-        <div style="display: flex; justify-content: space-between; align-items: center;">
-            <h1>Admin Panel</h1>
-            <button id="logoutBtn" style="background: #ef4444;">Logout</button>
+    <div id="quiz" class="hidden">
+        <div class="card">
+            <h2 id="qText">Question?</h2>
+            <div id="options"></div>
         </div>
+    </div>
 
-        <div class="tabs">
-            <button class="tab-btn active" id="tabCreate">Create Quiz</button>
-            <button class="tab-btn" id="tabResults">View Results</button>
-        </div>
-
-        <div id="createSection">
-            <div class="card">
-                <h3>Quiz Bank Name</h3>
-                <input type="text" id="bankName" placeholder="e.g. Biology 101">
-                <h3>Paste AI Text</h3>
-                <textarea id="aiText" style="height: 150px;" placeholder="1. Question..."></textarea>
-                <button id="saveQuizBtn">Save Quiz to Cloud</button>
-            </div>
-        </div>
-
-        <div id="resultsSection" class="hidden">
-            <div class="card">
-                <h3>Student Scores</h3>
-                <table>
-                    <thead><tr><th>Student</th><th>Quiz</th><th>Score</th><th>Date</th></tr></thead>
-                    <tbody id="resultsBody"></tbody>
-                </table>
-            </div>
-        </div>
+    <div id="finish" class="hidden card" style="text-align: center;">
+        <h1>Finished!</h1>
+        <div id="score" style="font-size: 50px; color: var(--primary);">0%</div>
+        <button onclick="location.reload()">Back to Home</button>
     </div>
 </div>
 
 <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.0/firebase-app.js";
-    import { getAuth, signInWithEmailAndPassword, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.7.0/firebase-auth.js";
-    import { getFirestore, collection, addDoc, getDocs, query, orderBy } from "https://www.gstatic.com/firebasejs/10.7.0/firebase-firestore.js";
+    import { getFirestore, collection, getDocs, addDoc } from "https://www.gstatic.com/firebasejs/10.7.0/firebase-firestore.js";
 
     const firebaseConfig = {
         apiKey: "AIzaSyACKQAD1sIUGdOjncQkfjMrmGh4x_U0v74",
@@ -77,78 +77,85 @@
     };
 
     const app = initializeApp(firebaseConfig);
-    const auth = getAuth(app);
     const db = getFirestore(app);
 
-    // --- Authentication ---
-    document.getElementById('loginBtn').onclick = async () => {
-        const email = document.getElementById('email').value;
-        const pass = document.getElementById('password').value;
-        try { await signInWithEmailAndPassword(auth, email, pass); } 
-        catch (e) { alert("Login Failed: " + e.message); }
-    };
+    let quizzes = [];
+    let activeQuiz = null;
+    let currentIdx = 0;
+    let score = 0;
 
-    onAuthStateChanged(auth, (user) => {
-        if (user) {
-            document.getElementById('authBox').classList.add('hidden');
-            document.getElementById('dashboard').classList.remove('hidden');
-            loadResults();
-        } else {
-            document.getElementById('authBox').classList.remove('hidden');
-            document.getElementById('dashboard').classList.add('hidden');
-        }
-    });
-
-    document.getElementById('logoutBtn').onclick = () => signOut(auth);
-
-    // --- Quiz Logic ---
-    document.getElementById('saveQuizBtn').onclick = async () => {
-        const name = document.getElementById('bankName').value;
-        const text = document.getElementById('aiText').value;
-        if(!name || !text) return alert("Fill everything!");
-
-        // Simple Parser
-        const questions = [];
-        const blocks = text.split(/\n(?=\d+[\.\)])/);
-        blocks.forEach(block => {
-            const lines = block.split('\n').map(l => l.trim()).filter(l => l !== "");
-            if (lines.length < 3) return;
-            const question = lines[0].replace(/^\d+[\.\)]\s*/, "");
-            const options = lines.filter(l => l.match(/^[A-D][\.\)]/i));
-            const ansLine = lines.find(l => l.toLowerCase().includes("correct"));
-            const correct = ansLine ? ansLine.split(/[:\-]/).pop().trim().charAt(0).toUpperCase() : "A";
-            questions.push({ question, options, correct });
+    // Load Quizzes from Cloud
+    window.onload = async () => {
+        const snap = await getDocs(collection(db, "quizzes"));
+        const select = document.getElementById('sQuiz');
+        select.innerHTML = "";
+        snap.forEach(doc => {
+            quizzes.push({id: doc.id, ...doc.data()});
+            select.innerHTML += `<option value="${doc.id}">${doc.data().bankName}</option>`;
         });
-
-        try {
-            await addDoc(collection(db, "quizzes"), { bankName: name, questions: questions, createdAt: new Date() });
-            alert("Quiz saved to Cloud!");
-            document.getElementById('aiText').value = "";
-        } catch (e) { alert("Error saving: " + e.message); }
     };
 
-    // --- Results Logic ---
-    async function loadResults() {
-        const q = query(collection(db, "results"), orderBy("date", "desc"));
-        const snapshot = await getDocs(q);
-        const body = document.getElementById('resultsBody');
-        body.innerHTML = "";
-        snapshot.forEach(doc => {
-            const r = doc.data();
-            body.innerHTML += `<tr><td>${r.studentName}</td><td>${r.quizName}</td><td>${r.score}%</td><td>${r.date}</td></tr>`;
+    document.getElementById('startBtn').onclick = () => {
+        const name = document.getElementById('sName').value;
+        const qId = document.getElementById('sQuiz').value;
+        if(!name) return alert("Name please!");
+        activeQuiz = quizzes.find(q => q.id === qId);
+        document.getElementById('setup').classList.add('hidden');
+        document.getElementById('quiz').classList.remove('hidden');
+        renderQ();
+    };
+
+    function renderQ() {
+        const q = activeQuiz.questions[currentIdx];
+        document.getElementById('qText').innerText = q.question;
+        const optCont = document.getElementById('options');
+        optCont.innerHTML = "";
+        q.options.forEach(opt => {
+            const btn = document.createElement('button');
+            btn.className = 'button option-btn';
+            btn.innerText = opt;
+            btn.onclick = () => checkAns(opt, btn);
+            optCont.appendChild(btn);
         });
     }
 
-    // Tabs
-    document.getElementById('tabCreate').onclick = () => {
-        document.getElementById('createSection').classList.remove('hidden');
-        document.getElementById('resultsSection').classList.add('hidden');
-    };
-    document.getElementById('tabResults').onclick = () => {
-        document.getElementById('createSection').classList.add('hidden');
-        document.getElementById('resultsSection').classList.remove('hidden');
-        loadResults();
-    };
+    async function checkAns(sel, btn) {
+        const q = activeQuiz.questions[currentIdx];
+        const correct = q.correct;
+        const picked = sel.trim().charAt(0).toUpperCase();
+
+        if(picked === correct) {
+            btn.classList.add('correct');
+            score++;
+        } else {
+            btn.classList.add('wrong');
+        }
+
+        setTimeout(async () => {
+            currentIdx++;
+            if(currentIdx < activeQuiz.questions.length) renderQ();
+            else {
+                const finalScore = Math.round((score/activeQuiz.questions.length)*100);
+                document.getElementById('quiz').classList.add('hidden');
+                document.getElementById('finish').classList.remove('hidden');
+                document.getElementById('score').innerText = finalScore + "%";
+                
+                // Save Result to Firebase
+                await addDoc(collection(db, "results"), {
+                    studentName: document.getElementById('sName').value,
+                    quizName: activeQuiz.bankName,
+                    score: finalScore,
+                    date: new Date().toLocaleString()
+                });
+            }
+        }, 1000);
+    }
 </script>
+<div class="admin-access">
+    <a href="admin.html" title="Admin Login">
+        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1V15a2 2 0 0 1-2-2 2 2 0 0 1 2-2v-.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
+    </a>
+</div>
+
 </body>
 </html>
