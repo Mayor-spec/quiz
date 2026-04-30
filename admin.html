@@ -3,36 +3,50 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AI Quiz Admin - Firebase</title>
+    <title>Admin Panel - AI Quiz Generator</title>
     <style>
-        :root { --primary: #4f46e5; --bg: #f8fafc; --text: #1e293b; }
-        body { font-family: 'Inter', sans-serif; background: var(--bg); margin: 0; padding: 20px; }
+        :root { --primary: #4f46e5; --bg: #f8fafc; --text: #1e293b; --success: #10b981; }
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: var(--bg); color: var(--text); margin: 0; padding: 20px; }
         .container { max-width: 900px; margin: 0 auto; }
+        
+        /* Auth Card */
+        #authBox { max-width: 400px; margin: 100px auto; text-align: center; }
         .card { background: white; padding: 25px; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); margin-bottom: 20px; }
-        textarea, input, select { width: 100%; padding: 12px; margin-top: 8px; border: 1px solid #e2e8f0; border-radius: 6px; box-sizing: border-box; }
-        button { background: var(--primary); color: white; border: none; padding: 12px 24px; border-radius: 6px; cursor: pointer; font-weight: bold; margin-top: 10px; }
+        
+        input, textarea, select { width: 100%; padding: 12px; margin-top: 10px; border: 1px solid #e2e8f0; border-radius: 6px; box-sizing: border-box; }
+        button { background: var(--primary); color: white; border: none; padding: 12px 24px; border-radius: 6px; cursor: pointer; font-weight: bold; margin-top: 15px; }
+        button:hover { opacity: 0.9; }
+
+        /* Tabs */
+        .tabs { display: flex; gap: 10px; margin-bottom: 20px; }
+        .tab-btn { background: #cbd5e1; color: var(--text); border: none; padding: 10px 20px; border-radius: 5px; cursor: pointer; font-weight: bold; }
+        .tab-btn.active { background: var(--primary); color: white; }
+
+        /* Preview Area */
+        #previewArea { border-top: 2px solid #e2e8f0; margin-top: 20px; padding-top: 20px; }
+        .preview-q { border-bottom: 1px solid #f1f5f9; padding: 15px 0; }
+        .preview-ans { color: var(--success); font-weight: bold; font-size: 0.9em; }
+
         .hidden { display: none; }
         table { width: 100%; border-collapse: collapse; margin-top: 20px; }
         th, td { text-align: left; padding: 12px; border-bottom: 1px solid #e2e8f0; }
-        .tabs { display: flex; gap: 10px; margin-bottom: 20px; }
-        .tab-btn { padding: 10px 20px; border: none; cursor: pointer; border-radius: 5px; background: #cbd5e1; }
-        .tab-btn.active { background: var(--primary); color: white; }
+        th { background: #f8fafc; }
     </style>
 </head>
 <body>
 
 <div class="container">
     <div id="authBox" class="card">
-        <h2>Admin Login</h2>
+        <h2>Admin Secure Login</h2>
         <input type="email" id="email" placeholder="Admin Email">
         <input type="password" id="password" placeholder="Password">
-        <button id="loginBtn">Login</button>
+        <button id="loginBtn">Access Dashboard</button>
     </div>
 
     <div id="dashboard" class="hidden">
-        <div style="display: flex; justify-content: space-between; align-items: center;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
             <h1>Admin Panel</h1>
-            <button id="logoutBtn" style="background: #ef4444;">Logout</button>
+            <button id="logoutBtn" style="background: #ef4444; margin-top: 0;">Logout</button>
         </div>
 
         <div class="tabs">
@@ -42,19 +56,30 @@
 
         <div id="createSection">
             <div class="card">
-                <h3>Quiz Bank Name</h3>
-                <input type="text" id="bankName" placeholder="e.g. Biology 101">
+                <h3>Quiz Information</h3>
+                <input type="text" id="bankName" placeholder="Bank Name (e.g., Chemistry Midterm)">
+                
                 <h3>Paste AI Text</h3>
-                <textarea id="aiText" style="height: 150px;" placeholder="1. Question..."></textarea>
-                <button id="saveQuizBtn">Save Quiz to Cloud</button>
+                <p style="font-size: 0.8em; color: #64748b;">Copy-paste questions from Gemini/ChatGPT here.</p>
+                <textarea id="aiText" style="height: 200px;" placeholder="1. What is... A) ... B) ... C) ... D) ... Correct Answer: B"></textarea>
+                
+                <button id="parseBtn" style="background: #6366f1; width: 100%;">1. Parse AI Content & Review</button>
+            </div>
+
+            <div id="previewArea" class="card hidden">
+                <h3 style="margin-top: 0;">Review Parsed Questions</h3>
+                <div id="previewList"></div>
+                <button id="saveQuizBtn" style="background: var(--success); width: 100%; margin-top: 20px;">2. All Good! Save to Cloud</button>
             </div>
         </div>
 
         <div id="resultsSection" class="hidden">
             <div class="card">
-                <h3>Student Scores</h3>
-                <table>
-                    <thead><tr><th>Student</th><th>Quiz</th><th>Score</th><th>Date</th></tr></thead>
+                <h3>Student Results</h3>
+                <table id="resultsTable">
+                    <thead>
+                        <tr><th>Student</th><th>Quiz Bank</th><th>Score</th><th>Date</th></tr>
+                    </thead>
                     <tbody id="resultsBody"></tbody>
                 </table>
             </div>
@@ -80,12 +105,14 @@
     const auth = getAuth(app);
     const db = getFirestore(app);
 
-    // --- Authentication ---
+    let tempQuestions = [];
+
+    // --- Authentication Logic ---
     document.getElementById('loginBtn').onclick = async () => {
-        const email = document.getElementById('email').value;
-        const pass = document.getElementById('password').value;
-        try { await signInWithEmailAndPassword(auth, email, pass); } 
-        catch (e) { alert("Login Failed: " + e.message); }
+        const e = document.getElementById('email').value;
+        const p = document.getElementById('password').value;
+        try { await signInWithEmailAndPassword(auth, e, p); }
+        catch (err) { alert("Error: " + err.message); }
     };
 
     onAuthStateChanged(auth, (user) => {
@@ -101,54 +128,94 @@
 
     document.getElementById('logoutBtn').onclick = () => signOut(auth);
 
-    // --- Quiz Logic ---
-    document.getElementById('saveQuizBtn').onclick = async () => {
-        const name = document.getElementById('bankName').value;
-        const text = document.getElementById('aiText').value;
-        if(!name || !text) return alert("Fill everything!");
+    // --- 1. THE PARSER (The Review Stage) ---
+    document.getElementById('parseBtn').onclick = () => {
+        const rawText = document.getElementById('aiText').value;
+        if (!rawText.trim()) return alert("Paste some AI text first!");
 
-        // Simple Parser
-        const questions = [];
-        const blocks = text.split(/\n(?=\d+[\.\)])/);
+        tempQuestions = [];
+        // Regex to split by 1. or 1)
+        const blocks = rawText.split(/\n(?=\d+[\.\)])/);
+
         blocks.forEach(block => {
             const lines = block.split('\n').map(l => l.trim()).filter(l => l !== "");
             if (lines.length < 3) return;
-            const question = lines[0].replace(/^\d+[\.\)]\s*/, "");
+
+            const questionText = lines[0].replace(/^\d+[\.\)]\s*/, "");
             const options = lines.filter(l => l.match(/^[A-D][\.\)]/i));
-            const ansLine = lines.find(l => l.toLowerCase().includes("correct"));
-            const correct = ansLine ? ansLine.split(/[:\-]/).pop().trim().charAt(0).toUpperCase() : "A";
-            questions.push({ question, options, correct });
+            
+            // Search for "Correct Answer" or just "Answer"
+            const ansLine = lines.find(l => l.toLowerCase().includes("correct") || l.toLowerCase().includes("answer"));
+            let correctChar = "A";
+            if (ansLine) {
+                const parts = ansLine.split(/[:\-]/);
+                correctChar = parts[parts.length - 1].trim().charAt(0).toUpperCase();
+            }
+
+            tempQuestions.push({ question: questionText, options: options, correct: correctChar });
         });
 
-        try {
-            await addDoc(collection(db, "quizzes"), { bankName: name, questions: questions, createdAt: new Date() });
-            alert("Quiz saved to Cloud!");
-            document.getElementById('aiText').value = "";
-        } catch (e) { alert("Error saving: " + e.message); }
+        // Update the Review List in the HTML
+        const list = document.getElementById('previewList');
+        list.innerHTML = tempQuestions.map((q, idx) => `
+            <div class="preview-q">
+                <strong>${idx + 1}. ${q.question}</strong><br>
+                <small>${q.options.join(' | ')}</small><br>
+                <span class="preview-ans">Correct Answer: ${q.correct}</span>
+            </div>
+        `).join('');
+
+        document.getElementById('previewArea').classList.remove('hidden');
     };
 
-    // --- Results Logic ---
-    async function loadResults() {
-        const q = query(collection(db, "results"), orderBy("date", "desc"));
-        const snapshot = await getDocs(q);
-        const body = document.getElementById('resultsBody');
-        body.innerHTML = "";
-        snapshot.forEach(doc => {
-            const r = doc.data();
-            body.innerHTML += `<tr><td>${r.studentName}</td><td>${r.quizName}</td><td>${r.score}%</td><td>${r.date}</td></tr>`;
-        });
-    }
+    // --- 2. THE SAVER (The Cloud Stage) ---
+    document.getElementById('saveQuizBtn').onclick = async () => {
+        const bankName = document.getElementById('bankName').value;
+        if (!bankName) return alert("Please name your Quiz Bank!");
 
-    // Tabs
+        try {
+            await addDoc(collection(db, "quizzes"), {
+                bankName: bankName,
+                questions: tempQuestions,
+                createdAt: new Date()
+            });
+            alert("Success! Quiz saved to Cloud Firestore.");
+            // Reset fields
+            document.getElementById('bankName').value = "";
+            document.getElementById('aiText').value = "";
+            document.getElementById('previewArea').classList.add('hidden');
+        } catch (err) {
+            console.error(err);
+            alert("Permission Denied: Ensure your UID is set in Firebase Rules.");
+        }
+    };
+
+    // --- Tab Switching ---
     document.getElementById('tabCreate').onclick = () => {
         document.getElementById('createSection').classList.remove('hidden');
         document.getElementById('resultsSection').classList.add('hidden');
+        document.getElementById('tabCreate').classList.add('active');
+        document.getElementById('tabResults').classList.remove('active');
     };
+
     document.getElementById('tabResults').onclick = () => {
         document.getElementById('createSection').classList.add('hidden');
         document.getElementById('resultsSection').classList.remove('hidden');
+        document.getElementById('tabCreate').classList.remove('active');
+        document.getElementById('tabResults').classList.add('active');
         loadResults();
     };
+
+    async function loadResults() {
+        const q = query(collection(db, "results"), orderBy("date", "desc"));
+        const snap = await getDocs(q);
+        const body = document.getElementById('resultsBody');
+        body.innerHTML = "";
+        snap.forEach(doc => {
+            const data = doc.data();
+            body.innerHTML += `<tr><td>${data.studentName}</td><td>${data.quizName}</td><td>${data.score}%</td><td>${data.date}</td></tr>`;
+        });
+    }
 </script>
 </body>
 </html>
