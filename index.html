@@ -3,65 +3,60 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Student Portal - Cloud Quiz</title>
+    <title>Student Portal - AI Quiz</title>
     <style>
         :root { --primary: #4f46e5; --bg: #f1f5f9; --text: #1e293b; --success: #22c55e; --danger: #ef4444; }
-        body { font-family: 'Inter', sans-serif; background: var(--bg); margin: 0; padding: 20px; }
-        .container { max-width: 600px; margin: 0 auto; }
-        .card { background: white; padding: 30px; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); margin-bottom: 20px; }
+        body { font-family: 'Inter', sans-serif; background: var(--bg); color: var(--text); margin: 0; padding: 20px; }
+        .container { max-width: 650px; margin: 0 auto; }
+        .card { background: white; padding: 30px; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); margin-bottom: 20px; position: relative; }
+        
+        /* Timer Styles */
+        .timer-container { width: 100%; height: 6px; background: #e2e8f0; border-radius: 3px; margin-bottom: 20px; overflow: hidden; }
+        #timerBar { height: 100%; background: var(--danger); width: 100%; transition: linear 1s; }
+        #timerText { font-weight: bold; color: var(--danger); float: right; margin-bottom: 5px; }
+
         input, select { width: 100%; padding: 12px; margin: 10px 0; border: 1px solid #cbd5e1; border-radius: 8px; }
-        button { width: 100%; background: var(--primary); color: white; border: none; padding: 14px; border-radius: 8px; cursor: pointer; font-weight: bold; }
-        .option-btn { background: #f8fafc; color: var(--text); border: 1px solid #e2e8f0; margin-bottom: 8px; text-align: left; }
-        .option-btn.correct { background: #dcfce7; border-color: var(--success); }
-        .option-btn.wrong { background: #fee2e2; border-color: var(--danger); }
+        button { width: 100%; background: var(--primary); color: white; border: none; padding: 14px; border-radius: 8px; cursor: pointer; font-weight: bold; margin-top: 10px; }
+        
+        .option-btn { background: #f8fafc; color: var(--text); border: 1px solid #e2e8f0; text-align: left; transition: 0.2s; }
+        .option-btn:hover { border-color: var(--primary); background: #f1f5f9; }
+        .option-btn.correct { background: #dcfce7 !important; border-color: var(--success) !important; color: #166534; }
+        .option-btn.wrong { background: #fee2e2 !important; border-color: var(--danger) !important; color: #991b1b; }
+        
         .hidden { display: none; }
-.admin-access {
-    position: fixed;
-    bottom: 20px;
-    right: 20px;
-    opacity: 0.3; /* Makes it faint so students don't notice it immediately */
-    transition: opacity 0.3s;
-}
-
-.admin-access:hover {
-    opacity: 1; /* Becomes clear when you hover over it */
-}
-
-.admin-access a {
-    color: #64748b;
-    text-decoration: none;
-    background: white;
-    padding: 10px;
-    border-radius: 50%;
-    display: flex;
-    box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-}
-
+        .admin-link { position: fixed; bottom: 15px; right: 15px; opacity: 0.2; text-decoration: none; color: gray; font-size: 12px; }
     </style>
 </head>
 <body>
 
 <div class="container">
-    <div id="setup" class="card">
-        <h1>Take a Quiz</h1>
-        <input type="text" id="sName" placeholder="Your Name">
-        <select id="sQuiz"><option>Loading quizzes...</option></select>
-        <button id="startBtn">Start Now</button>
+    <div id="setupScreen" class="card">
+        <h1>Welcome to the Quiz</h1>
+        <p>Please enter your name and select the assigned test.</p>
+        <input type="text" id="studentName" placeholder="Full Name">
+        <select id="quizSelect"><option>Loading quizzes...</option></select>
+        <button id="startBtn">Start Quiz</button>
     </div>
 
-    <div id="quiz" class="hidden">
+    <div id="quizScreen" class="hidden">
+        <div id="timerText">0s</div>
+        <div class="timer-container"><div id="timerBar"></div></div>
+        
         <div class="card">
             <h2 id="qText">Question?</h2>
-            <div id="options"></div>
+            <div id="optionsGrid"></div>
         </div>
     </div>
 
-    <div id="finish" class="hidden card" style="text-align: center;">
-        <h1>Finished!</h1>
-        <div id="score" style="font-size: 50px; color: var(--primary);">0%</div>
-        <button onclick="location.reload()">Back to Home</button>
+    <div id="finishScreen" class="hidden card" style="text-align: center;">
+        <h1>Test Complete!</h1>
+        <div id="finalScore" style="font-size: 60px; font-weight: bold; color: var(--primary);">0%</div>
+        <p id="feedbackMsg"></p>
+        <button onclick="location.reload()" style="background: #64748b;">Exit Portal</button>
     </div>
 </div>
+
+<a href="admin.html" class="admin-link">Admin Access</a>
 
 <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.0/firebase-app.js";
@@ -83,12 +78,15 @@
     let activeQuiz = null;
     let currentIdx = 0;
     let score = 0;
+    let studentDetailedAnswers = [];
+    let timerInterval = null;
+    let timeLeft = 0;
 
-    // Load Quizzes from Cloud
+    // Load available quizzes
     window.onload = async () => {
         const snap = await getDocs(collection(db, "quizzes"));
-        const select = document.getElementById('sQuiz');
-        select.innerHTML = "";
+        const select = document.getElementById('quizSelect');
+        select.innerHTML = '<option value="">-- Select Quiz --</option>';
         snap.forEach(doc => {
             quizzes.push({id: doc.id, ...doc.data()});
             select.innerHTML += `<option value="${doc.id}">${doc.data().bankName}</option>`;
@@ -96,66 +94,109 @@
     };
 
     document.getElementById('startBtn').onclick = () => {
-        const name = document.getElementById('sName').value;
-        const qId = document.getElementById('sQuiz').value;
-        if(!name) return alert("Name please!");
+        const name = document.getElementById('studentName').value;
+        const qId = document.getElementById('quizSelect').value;
+        if(!name || !qId) return alert("Please enter your name and select a quiz!");
+
         activeQuiz = quizzes.find(q => q.id === qId);
-        document.getElementById('setup').classList.add('hidden');
-        document.getElementById('quiz').classList.remove('hidden');
-        renderQ();
+        document.getElementById('setupScreen').classList.add('hidden');
+        document.getElementById('quizScreen').classList.remove('hidden');
+        showQuestion();
     };
 
-    function renderQ() {
+    function showQuestion() {
+        clearInterval(timerInterval);
         const q = activeQuiz.questions[currentIdx];
-        document.getElementById('qText').innerText = q.question;
-        const optCont = document.getElementById('options');
-        optCont.innerHTML = "";
+        document.getElementById('qText').innerText = `${currentIdx + 1}. ${q.question}`;
+        
+        const container = document.getElementById('optionsGrid');
+        container.innerHTML = "";
+
         q.options.forEach(opt => {
             const btn = document.createElement('button');
-            btn.className = 'button option-btn';
+            btn.className = 'option-btn';
             btn.innerText = opt;
-            btn.onclick = () => checkAns(opt, btn);
-            optCont.appendChild(btn);
+            btn.onclick = () => handleChoice(opt, btn);
+            container.appendChild(btn);
         });
+
+        startTimer();
     }
 
-    async function checkAns(sel, btn) {
-        const q = activeQuiz.questions[currentIdx];
-        const correct = q.correct;
-        const picked = sel.trim().charAt(0).toUpperCase();
+    function startTimer() {
+        timeLeft = parseInt(activeQuiz.timePerQuestion) || 30;
+        const totalTime = timeLeft;
+        const bar = document.getElementById('timerBar');
+        const text = document.getElementById('timerText');
 
-        if(picked === correct) {
-            btn.classList.add('correct');
-            score++;
-        } else {
-            btn.classList.add('wrong');
-        }
+        timerInterval = setInterval(() => {
+            timeLeft--;
+            text.innerText = timeLeft + "s";
+            bar.style.width = (timeLeft / totalTime) * 100 + "%";
 
-        setTimeout(async () => {
-            currentIdx++;
-            if(currentIdx < activeQuiz.questions.length) renderQ();
-            else {
-                const finalScore = Math.round((score/activeQuiz.questions.length)*100);
-                document.getElementById('quiz').classList.add('hidden');
-                document.getElementById('finish').classList.remove('hidden');
-                document.getElementById('score').innerText = finalScore + "%";
-                
-                // Save Result to Firebase
-                await addDoc(collection(db, "results"), {
-                    studentName: document.getElementById('sName').value,
-                    quizName: activeQuiz.bankName,
-                    score: finalScore,
-                    date: new Date().toLocaleString()
-                });
+            if(timeLeft <= 0) {
+                clearInterval(timerInterval);
+                handleChoice(null, null); // Force "Wrong" on timeout
             }
         }, 1000);
     }
-</script>
-<div class="admin-access">
-    <a href="admin.html" title="Admin Login">
-        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1V15a2 2 0 0 1-2-2 2 2 0 0 1 2-2v-.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
-    </a>
-</div>
 
+    async function handleChoice(selectedStr, btn) {
+        clearInterval(timerInterval);
+        const q = activeQuiz.questions[currentIdx];
+        const correctLetter = q.correct;
+        const selectedLetter = selectedStr ? selectedStr.trim().charAt(0).toUpperCase() : "NONE";
+
+        const isCorrect = selectedLetter === correctLetter;
+        if(isCorrect) {
+            score++;
+            if(btn) btn.classList.add('correct');
+        } else {
+            if(btn) btn.classList.add('wrong');
+            // Auto-highlight correct one if they failed
+            const buttons = document.querySelectorAll('.option-btn');
+            buttons.forEach(b => {
+                if(b.innerText.trim().charAt(0).toUpperCase() === correctLetter) b.classList.add('correct');
+            });
+        }
+
+        // Save detailed data for Admin
+        studentDetailedAnswers.push({
+            question: q.question,
+            selected: selectedLetter,
+            correct: correctLetter,
+            isCorrect: isCorrect
+        });
+
+        setTimeout(() => {
+            currentIdx++;
+            if(currentIdx < activeQuiz.questions.length) {
+                showQuestion();
+            } else {
+                finishQuiz();
+            }
+        }, 1500);
+    }
+
+    async function finishQuiz() {
+        document.getElementById('quizScreen').classList.add('hidden');
+        document.getElementById('finishScreen').classList.remove('hidden');
+
+        const finalPercent = Math.round((score / activeQuiz.questions.length) * 100);
+        document.getElementById('finalScore').innerText = finalPercent + "%";
+        document.getElementById('feedbackMsg').innerText = `You got ${score} out of ${activeQuiz.questions.length} correct.`;
+
+        // Push detailed result to Firebase
+        try {
+            await addDoc(collection(db, "results"), {
+                studentName: document.getElementById('studentName').value,
+                quizName: activeQuiz.bankName,
+                score: finalPercent,
+                detailedAnswers: studentDetailedAnswers,
+                date: new Date().toLocaleString()
+            });
+        } catch(e) { console.error("Error saving result:", e); }
+    }
+</script>
 </body>
 </html>
